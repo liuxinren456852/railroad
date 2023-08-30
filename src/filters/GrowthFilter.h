@@ -17,11 +17,12 @@ namespace railroad
 class GrowthFilter : public CloudProcessor
 {
 public:
-    GrowthFilter(const std::string &name = "GrowthFilter", float seedBoxLength = 0.4f, int seedGridCount = 4, int seedMaxNumberOfPoints = 110)
-        : CloudProcessor(name, true), _seedBoxLength(seedBoxLength), _seedGridCount(seedGridCount), _seedMaxNumberOfPoints(seedMaxNumberOfPoints) {}
+    GrowthFilter(SeedHelper::SeedType _runOnSeed, const std::string &name = "GrowthFilter", float seedBoxLength = 0.4f, int seedGridCount = 4, int seedMaxNumberOfPoints = 110)
+        : CloudProcessor(name),  _runOnSeed(_runOnSeed), _seedBoxLength(seedBoxLength), _seedGridCount(seedGridCount), _seedMaxNumberOfPoints(seedMaxNumberOfPoints) {}
 
 protected:
     PointCloudPtr process() override;
+    SeedHelper::SeedType _runOnSeed = SeedHelper::NONE;
 
 private:
     struct BoundingBox
@@ -49,7 +50,7 @@ private:
     void findCable(pcl::PointXYZ s, float boxLength, std::vector<int>& insideBox, pcl::PointCloud<pcl::PointXYZ>::Ptr cloud, std::vector<int>& cable, float skip);
     float _seedBoxLength;
     int _seedGridCount;
-    int _seedMaxNumberOfPoints;
+    std::size_t _seedMaxNumberOfPoints;
 };
 }  // railroad
 

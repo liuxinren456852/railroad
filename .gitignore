@@ -1,14 +1,7 @@
 bin/
 cmake-build-debug/
-build/
+build*/
+src/.vscode
 *.laz
 *.pcd
 
-# JetBrains
-.idea/
-
-# Eclipse
-.project
-
-# Visual Studio
-.vs/

@@ -20,6 +20,8 @@
 #include <pcl/console/parse.h>
 #include <pcl/filters/extract_indices.h>
 
+#include <Eigen/Eigenvalues>
+
 #include "Hough3dFilter.h"
 #include "../helpers/HoughHelper.h"
 #include "../helpers/LogHelper.h"
@@ -65,12 +67,17 @@ pcl::PointCloud<pcl::PointXYZ>::Ptr Hough3dFilter::process()
     int opt_nlines = _houghLineCount;
     int opt_minvotes = 2;
     do {
-        Eigen::Vector3f a; //indices anchor point of line
+        Eigen::Vector3f a; // indices anchor point of line
         Eigen::Vector3f b; // direction of line
 
         hough->subtract(Y); // do it here to save one call
 
         nvotes = hough->getLine(&a, &b);
+        {
+            Eigen::Vector3f p = a + shift;
+            LOG(trace) << "Highest number of Hough votes is " << nvotes << " for for the following line: "
+                       << "a=(" << p.x() << "," << p.y() << "," << p.z() << "), b=(" << b.x() << "," << b.y() << "," << b.z() << ")";
+        }
 
         pointsCloseToLine(a, b, opt_dx, Y, transformed, indices);
 
@@ -104,7 +111,6 @@ pcl::PointCloud<pcl::PointXYZ>::Ptr Hough3dFilter::process()
 
         extract.setInputCloud(cloud);
         extract.filter(*cloud);
-
     } while ((transformed->size() > 1) &&
              ((opt_nlines == 0) || (opt_nlines > nlines)));
 
@@ -171,7 +177,7 @@ float Hough3dFilter::orthogonal_LSQ(const pcl::PointCloud<pcl::PointXYZ>::Ptr &p
 
 Eigen::Vector3f Hough3dFilter::meanValue(const pcl::PointCloud<pcl::PointXYZ>::Ptr &pc)
 {
-    Eigen::Vector3f ret;
+    Eigen::Vector3f ret(0, 0, 0);
     for (auto &i : *pc) {
         ret += i.getVector3fMap();
     }

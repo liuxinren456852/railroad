@@ -19,14 +19,16 @@ namespace railroad
 
 pcl::PointCloud<pcl::PointXYZ>::Ptr OutlierFilter::process()
 {
+    stopTimeMeasure();
     LOG(debug) << "Radius: " << radius << ", Neighbors: " << minNeighbors;
-
     pcl::PointCloud<pcl::PointXYZ>::Ptr filtered(new pcl::PointCloud<pcl::PointXYZ>);
+    startTimeMeasure();
 
     pcl::RadiusOutlierRemoval<pcl::PointXYZ> outlierRemover;
     outlierRemover.setInputCloud(_cloud);
     outlierRemover.setRadiusSearch(radius);
     outlierRemover.setMinNeighborsInRadius(minNeighbors);
+    outlierRemover.setNegative(invert);
     outlierRemover.filter(*filtered);
 
     return filtered;

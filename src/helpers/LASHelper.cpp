@@ -8,10 +8,14 @@
  */
 
 #include "LASHelper.h"
+#include "LASClass.h"
 #include "LogHelper.h"
 
 namespace railroad
 {
+bool LASAutoShift = true;
+pcl::PointXYZ globalShift = pcl::PointXYZ();
+bool globalShiftInitialized = false;
 
 LASreader *openLASReader(const std::string &filename, LASheader &header);
 
@@ -25,7 +29,6 @@ LASheader readLASHeader(const std::string &filename)
 
     return header;
 }
-
 
 pcl::PointCloud<pcl::PointXYZ>::Ptr readLAS(
         const std::string &filename,
@@ -43,15 +46,30 @@ pcl::PointCloud<pcl::PointXYZ>::Ptr readLAS(
     cloud->resize(size);
 
     LOG(debug) << "Started reading input";
+
+    LOG(debug) << "XYZ offset from header: " << lasreader-> header.x_offset << ", "
+     << lasreader-> header.y_offset << ", " << lasreader-> header.z_offset;
+
+    LOG(debug) << "XYZ scale factor from header: " << lasreader-> header.x_scale_factor << ", "
+     << lasreader-> header.y_scale_factor << ", " << lasreader-> header.z_scale_factor;
+
     LASpoint *point;
     for (unsigned long count = 0; count < size; ++count) {
         lasreader->read_point();
         point = &lasreader->point;
 
+        if(!globalShiftInitialized && LASAutoShift) {
+            globalShift.x = lasreader->header.x_offset;
+            globalShift.y = lasreader->header.y_offset;
+            globalShift.z = lasreader->header.z_offset;
+            globalShiftInitialized = true;
+            LOG(debug) << "Demean initialized: " << globalShift.x << " " << globalShift.y << " " << globalShift.z;
+        }
+
         cloud->points[count] = pcl::PointXYZ(
-                point->X * lasreader->header.x_scale_factor + lasreader->header.x_offset,
-                point->Y * lasreader->header.y_scale_factor + lasreader->header.y_offset,
-                point->Z * lasreader->header.z_scale_factor + lasreader->header.z_offset);
+                point->X * lasreader->header.x_scale_factor + (lasreader->header.x_offset - globalShift.x),
+                point->Y * lasreader->header.y_scale_factor + (lasreader->header.y_offset - globalShift.y),
+                point->Z * lasreader->header.z_scale_factor + (lasreader->header.z_offset - globalShift.z));
     }
     LOG(debug) << "Finished reading input";
 
@@ -77,6 +95,13 @@ pcl::PointCloud<pcl::PointXYZ>::Ptr readLAS(
     pcl::PointCloud<pcl::PointXYZ>::Ptr cloud(new pcl::PointCloud<pcl::PointXYZ>);
 
     LOG(debug) << "Started reading input";
+
+    LOG(debug) << "XYZ offset from header: " << lasreader-> header.x_offset << ", "
+     << lasreader-> header.y_offset << ", " << lasreader-> header.z_offset;
+
+    LOG(debug) << "XYZ scale factor from header: " << lasreader-> header.x_scale_factor << ", "
+     << lasreader-> header.y_scale_factor << ", " << lasreader-> header.z_scale_factor;
+
     LASpoint *point;
     for (unsigned long count = 0; count < size; ++count) {
         lasreader->read_point();
@@ -84,10 +109,19 @@ pcl::PointCloud<pcl::PointXYZ>::Ptr readLAS(
 
         if (point->X >= minX && point->Y <= maxX &&
             point->Y >= minY && point->Y <= maxY) {
+
+            if(!globalShiftInitialized && LASAutoShift) {
+                globalShift.x = lasreader->header.x_offset;
+                globalShift.y = lasreader->header.y_offset;
+                globalShift.z = lasreader->header.z_offset;
+                globalShiftInitialized = true;
+                LOG(debug) << "Demean initialized: " << globalShift.x << " " << globalShift.y << " " << globalShift.z;
+            }
+
             cloud->points.push_back(pcl::PointXYZ(
-                    point->X * lasreader->header.x_scale_factor + lasreader->header.x_offset,
-                    point->Y * lasreader->header.y_scale_factor + lasreader->header.y_offset,
-                    point->Z * lasreader->header.z_scale_factor + lasreader->header.z_offset));
+                    point->X * lasreader->header.x_scale_factor + (lasreader->header.x_offset - globalShift.x),
+                    point->Y * lasreader->header.y_scale_factor + (lasreader->header.y_offset - globalShift.y),
+                    point->Z * lasreader->header.z_scale_factor + (lasreader->header.z_offset - globalShift.z)));
         }
     }
     LOG(debug) << "Finished reading input";
@@ -99,9 +133,9 @@ pcl::PointCloud<pcl::PointXYZ>::Ptr readLAS(
 }
 
 void writeLAS(
-        const std::string &filename,
-        const LASheader &header,
-        const pcl::PointCloud<pcl::PointXYZI>::Ptr cloud)
+    const std::string &filename,
+    const LASheader &header,
+    const pcl::PointCloud<pcl::PointXYZ>::Ptr cloud)
 {
     // Open LAS/LAZ writer
     LOG(debug) << "Opening LAS writer";
@@ -117,22 +151,110 @@ void writeLAS(
     LOG(debug) << "Started writing output";
     for (auto it = cloud->begin(); it != cloud->end(); ++it) {
         // Populate the LAS point
-        point.X = (it->x - header.x_offset) / header.x_scale_factor;
-        point.Y = (it->y - header.y_offset) / header.y_scale_factor;
-        point.Z = (it->z - header.z_offset) / header.z_scale_factor;
+        point.X = (it->x - (header.x_offset - globalShift.x)) / header.x_scale_factor;
+        point.Y = (it->y - (header.y_offset - globalShift.y)) / header.y_scale_factor;
+        point.Z = (it->z - (header.z_offset - globalShift.z)) / header.z_scale_factor;
 
-        if (it->intensity > 0) {
-            point.classification = (unsigned char) LASClass::CABLE;
-            // RED
-            point.rgb[0] = 65535 * it->intensity;
-            point.rgb[1] = 0;
-            point.rgb[2] = 0;
-        } else {
-            point.classification = (unsigned char) LASClass::UNCLASSIFIED;
-            // GRAY
-            point.rgb[0] = 32768;
-            point.rgb[1] = 32768;
-            point.rgb[2] = 32768;
+        // Write the LAS point
+        laswriter->write_point(&point);
+        // Add it to the inventory
+        laswriter->update_inventory(&point);
+    }
+    // Update the header
+    laswriter->update_header(&header, true);
+    LOG(debug) << "Finished writing output";
+
+    laswriter->close();
+    delete laswriter;
+}
+
+void writeLAS(
+        const std::string &filename,
+        const LASheader &header,
+        const pcl::PointCloud<pcl::PointXYZL>::Ptr cloud)
+{
+    // Open LAS/LAZ writer
+    LOG(debug) << "Opening LAS writer";
+    LASwriteOpener laswriteopener;
+    laswriteopener.set_file_name(filename.c_str());
+    LASwriter *laswriter = laswriteopener.open(&header);
+
+    // Init LAS point
+    LASpoint point;
+    point.init(&header, header.point_data_format, header.point_data_record_length, 0);
+
+    // Write PCL point cloud
+    LOG(debug) << "Started writing output";
+    for (auto it = cloud->begin(); it != cloud->end(); ++it) {
+        // Populate the LAS point
+        point.X = (it->x - (header.x_offset - globalShift.x)) / header.x_scale_factor;
+        point.Y = (it->y - (header.y_offset - globalShift.y)) / header.y_scale_factor;
+        point.Z = (it->z - (header.z_offset - globalShift.z)) / header.z_scale_factor;
+
+        // Set classification
+        if (it->label > 0) {
+            point.classification = static_cast<unsigned char>(it->label);
+        }
+        else {
+            point.classification = static_cast<unsigned char>(LASClass::UNCLASSIFIED);
+        }
+
+        // Set color
+        switch (point.classification) {
+            case static_cast<int>(LASClass::CABLE):
+                // RED
+                point.rgb[0] = 65535;
+                point.rgb[1] = 0;
+                point.rgb[2] = 0;
+                break;
+            case static_cast<int>(LASClass::POLE):
+                // ORANGE
+                point.rgb[0] = 65535;
+                point.rgb[1] = 42240;
+                point.rgb[2] = 0;
+                break;
+            case static_cast<int>(LASClass::CANTILEVER):
+                // PURPLE
+                point.rgb[0] = 32768;
+                point.rgb[1] = 0;
+                point.rgb[2] = 32768;
+                break;
+            case static_cast<int>(LASClass::RAIL):
+                // BLUE
+                point.rgb[0] = 0;
+                point.rgb[1] = 0;
+                point.rgb[2] = 65535;
+                break;
+            case static_cast<int>(LASClass::RAIL_TIES):
+                // TURQUOISE
+                point.rgb[0] = 16384;
+                point.rgb[1] = 57344;
+                point.rgb[2] = 53248;
+                break;
+            case static_cast<int>(LASClass::LOW_VEGETATION):
+                // GREEN
+                point.rgb[0] = 0;
+                point.rgb[1] = 0;
+                point.rgb[2] = 65535;
+                break;
+            case static_cast<int>(LASClass::LOW_POINT):
+            case static_cast<int>(LASClass::HIGH_POINT):
+                // BLACK
+                point.rgb[0] = 0;
+                point.rgb[1] = 0;
+                point.rgb[2] = 0;
+                break;
+            case static_cast<int>(LASClass::GROUND):
+                // BROWN
+                point.rgb[0] = 38250;
+                point.rgb[1] = 19125;
+                point.rgb[2] = 0;
+                break;
+            default:
+                // GRAY
+                point.rgb[0] = 32768;
+                point.rgb[1] = 32768;
+                point.rgb[2] = 32768;
         }
 
         // Write the LAS point

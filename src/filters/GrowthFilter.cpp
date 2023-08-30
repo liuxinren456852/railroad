@@ -7,12 +7,11 @@
  * https://opensource.org/licenses/BSD-3-Clause
  */
 
-#include <iostream>
-
 #include <pcl/common/common.h>
 #include <pcl/ModelCoefficients.h>
 #include <pcl/filters/project_inliers.h>
 #include <pcl/sample_consensus/ransac.h>
+#include <pcl/sample_consensus/sac_model_parallel_line.h>
 #include <pcl/common/transforms.h>
 #include <pcl/common/io.h>
 
@@ -28,6 +27,14 @@ pcl::PointCloud<pcl::PointXYZ>::Ptr GrowthFilter::process()
     pcl::PointCloud<pcl::PointXYZ>::Ptr projectedCloud(new pcl::PointCloud<pcl::PointXYZ>);
     pcl::PointCloud<pcl::PointXYZ>::Ptr rotatedCloud(new pcl::PointCloud<pcl::PointXYZ>);
     pcl::PointCloud<pcl::PointXYZ>::Ptr tempCloud(new pcl::PointCloud<pcl::PointXYZ>);
+    pcl::PointCloud<pcl::PointXYZ>::ConstPtr seedCloudToUse;
+
+    if(_runOnSeed != SeedHelper::SeedType::NONE) {
+        seedCloudToUse = seedCloud(_runOnSeed);
+        LOG(debug) << "Using seed cloud specified in Pipes.h in filter";
+    } else {
+        LOG(error) << "Seed type not specified in Pipes.h for HeightFilter";
+    }
 
     pcl::copyPointCloud(*_cloud, *cloud);
     startTimeMeasure();
@@ -36,7 +43,7 @@ pcl::PointCloud<pcl::PointXYZ>::Ptr GrowthFilter::process()
     Eigen::VectorXf coeff;
 
     pcl::SampleConsensusModelParallelLine<pcl::PointXYZ>::Ptr model_p(
-        new pcl::SampleConsensusModelParallelLine<pcl::PointXYZ>(_seedCloud));
+        new pcl::SampleConsensusModelParallelLine<pcl::PointXYZ>(seedCloudToUse));
     model_p->setAxis(Eigen::Vector3f::UnitY());
     model_p->setEpsAngle(eps);
     std::vector<int> inliers;
@@ -56,7 +63,7 @@ pcl::PointCloud<pcl::PointXYZ>::Ptr GrowthFilter::process()
     transform.rotate(Eigen::AngleAxisf(-angle, Eigen::Vector3f(0.0, 0.0, 1.0)));
     transform.translation() << Eigen::Vector3f(0.0, 0.0, 0.0);
 
-    pcl::transformPointCloud(*_seedCloud, *rotatedCloud, transform);
+    pcl::transformPointCloud(*seedCloudToUse, *rotatedCloud, transform);
 
     pcl::ModelCoefficients::Ptr coefficients(new pcl::ModelCoefficients());
     coefficients->values.resize(4);
@@ -103,7 +110,7 @@ pcl::PointCloud<pcl::PointXYZ>::Ptr GrowthFilter::process()
             if (!grids[i][j].empty()) {
                 indices.insert(indices.end(), grids[i][j].begin(), grids[i][j].end());
 
-                pcl::copyPointCloud(*_seedCloud, indices, *tempCloud);
+                pcl::copyPointCloud(*seedCloudToUse, indices, *tempCloud);
                 std::sort(tempCloud->points.begin(), tempCloud->points.end(),
                           [](const pcl::PointXYZ &p1, const pcl::PointXYZ &p2) { return p1.y < p2.y; });
                 seeds.push_back(calcSeed(tempCloud, tempCloud->size()*0.05));
@@ -148,9 +155,6 @@ pcl::PointCloud<pcl::PointXYZ>::Ptr GrowthFilter::process()
             }
 
             insideBox.clear();
-
-            //std::cout << "cloud " << cloud->size() << std::endl;
-            //std::cout << "box " << insideBox.size() << std::endl;
         }
 
 
@@ -161,7 +165,6 @@ pcl::PointCloud<pcl::PointXYZ>::Ptr GrowthFilter::process()
 
             for(size_t j = 0; j < cloud->size(); ++j)
             {
-                //std::cout << "point " << rotatedCloud->at(j) << std::endl;
                 if(b.containsPoint(cloud->at(j)))
                 {
                     insideBox.push_back(j);
@@ -169,14 +172,12 @@ pcl::PointCloud<pcl::PointXYZ>::Ptr GrowthFilter::process()
                 }
             }
 
-            //std::cout << "first box size " << insideBox.size() << std::endl;
             std::sort(insideBox.begin(), insideBox.end(), [cloud](const int &i, const int &j) { return cloud->at(i).y < cloud->at(j).y; });
 
             pcl::PointXYZ s = seeds[i];
 
             while(cloud->at(insideBox[0]).y - 0.1 > minPt.y)
             {
-                //std::cout << " seedpoint in " << s << std::endl;
                 int quarterSize = insideBox.size() * 0.75;
                 insideBox.erase(insideBox.end() - quarterSize, insideBox.end());
 
@@ -191,9 +192,6 @@ pcl::PointCloud<pcl::PointXYZ>::Ptr GrowthFilter::process()
             }
 
             insideBox.clear();
-
-            //std::cout << "cloud " << cloud->size() << std::endl;
-            //std::cout << "box " << insideBox.size() << std::endl;
     }
 
     stopTimeMeasure();
@@ -206,84 +204,82 @@ pcl::PointCloud<pcl::PointXYZ>::Ptr GrowthFilter::process()
     return tempCloud;
 }
 
-    pcl::PointXYZ GrowthFilter::calcSeed(pcl::PointCloud<pcl::PointXYZ>::Ptr &cloud, size_t length)
-    {
-    float x = 0.0;
-    float y = 0.0;
-    float z = 0.0;
+pcl::PointXYZ GrowthFilter::calcSeed(pcl::PointCloud<pcl::PointXYZ>::Ptr &cloud, size_t length)
+{
+float x = 0.0;
+float y = 0.0;
+float z = 0.0;
 
-    for (size_t i = 0; i < length; ++i) {
-        x += cloud->at(i).x;
-        y += cloud->at(i).y;
-        z += cloud->at(i).z;
-    }
-        return {x / length, y / length, z / length};
+for (size_t i = 0; i < length; ++i) {
+    x += cloud->at(i).x;
+    y += cloud->at(i).y;
+    z += cloud->at(i).z;
+}
+    return {x / length, y / length, z / length};
+}
+
+void GrowthFilter::findCable(pcl::PointXYZ s, float boxLength, std::vector<int>& insideBox, pcl::PointCloud<pcl::PointXYZ>::Ptr cloud, std::vector<int>& cable, float skip)
+{
+    BoundingBox bb(s, boxLength);
+    insideBox.clear();
+
+    for(size_t j = 0; j < cloud->size(); ++j)
+    {
+        if(bb.containsPoint(cloud->at(j)))
+        {
+            insideBox.push_back(j);
+        }
     }
 
-    void GrowthFilter::findCable(pcl::PointXYZ s, float boxLength, std::vector<int>& insideBox, pcl::PointCloud<pcl::PointXYZ>::Ptr cloud, std::vector<int>& cable, float skip)
+    if(insideBox.empty())
     {
-        BoundingBox bb(s, boxLength);
-        insideBox.clear();
+        s.y += skip;
+
+        bb = BoundingBox(s, boxLength);
 
         for(size_t j = 0; j < cloud->size(); ++j)
         {
-            //std::cout << "point " << cloud->at(j) << std::endl;
             if(bb.containsPoint(cloud->at(j)))
             {
                 insideBox.push_back(j);
             }
         }
 
-        if(insideBox.empty())
+        float xAvg = 0.0f;
+        for(size_t box = cable.size() - 100; box < cable.size(); ++box)
         {
-            s.y += skip;
-
-            bb = BoundingBox(s, boxLength);
-
-            for(size_t j = 0; j < cloud->size(); ++j)
-            {
-                if(bb.containsPoint(cloud->at(j)))
-                {
-                    insideBox.push_back(j);
-                }
-            }
-
-            float xAvg = 0.0f;
-            for(size_t box = cable.size() - 100; box < cable.size(); ++box)
-            {
-                xAvg += (float) cloud->at(cable[box]).x;
-            }
-
-            xAvg /= 100.0f;
-
-            insideBox.erase(std::remove_if(insideBox.begin(), insideBox.end(), [&cloud, &xAvg](const int &i) { return (xAvg + 0.5 < cloud->at(i).x || xAvg - 0.5 > cloud->at(i).x); }), insideBox.end());
+            xAvg += (float) cloud->at(cable[box]).x;
         }
 
-        if(insideBox.size() > _seedMaxNumberOfPoints) {
-            BoundingBox quarterBox = BoundingBox(s, (boxLength * 0.25f));
-            std::vector<int> newBox;
+        xAvg /= 100.0f;
 
-            for (size_t j = 0; j < cloud->size(); ++j) {
-                if (quarterBox.containsPoint(cloud->at(j))) {
-                    newBox.push_back(j);
-                }
-            }
-
-            if(newBox.size() > 2)
-            {
-                insideBox.clear();
-                insideBox.insert(insideBox.end(), newBox.begin(), newBox.end());
-            }
-            else {
-                std::sort(insideBox.begin(), insideBox.end(), [cloud](const int &i, const int &j) { return cloud->at(i).x < cloud->at(j).x; });
-                float size = insideBox.size() * 0.1;
-                insideBox.erase(insideBox.begin() + size, insideBox.end());
-            }
-        }
-
-        std::sort(insideBox.begin(), insideBox.end(), [cloud](const int &i, const int &j) { return cloud->at(i).y < cloud->at(j).y; });
-        //std::cout << "box size " << insideBox.size() << std::endl;
-
-        cable.insert(cable.end(), insideBox.begin(), insideBox.end());
+        insideBox.erase(std::remove_if(insideBox.begin(), insideBox.end(), [&cloud, &xAvg](const int &i) { return (xAvg + 0.5 < cloud->at(i).x || xAvg - 0.5 > cloud->at(i).x); }), insideBox.end());
     }
+
+    if(insideBox.size() > _seedMaxNumberOfPoints) {
+        BoundingBox quarterBox = BoundingBox(s, (boxLength * 0.25f));
+        std::vector<int> newBox;
+
+        for (size_t j = 0; j < cloud->size(); ++j) {
+            if (quarterBox.containsPoint(cloud->at(j))) {
+                newBox.push_back(j);
+            }
+        }
+
+        if(newBox.size() > 2)
+        {
+            insideBox.clear();
+            insideBox.insert(insideBox.end(), newBox.begin(), newBox.end());
+        }
+        else {
+            std::sort(insideBox.begin(), insideBox.end(), [cloud](const int &i, const int &j) { return cloud->at(i).x < cloud->at(j).x; });
+            float size = insideBox.size() * 0.1;
+            insideBox.erase(insideBox.begin() + size, insideBox.end());
+        }
+    }
+
+    std::sort(insideBox.begin(), insideBox.end(), [cloud](const int &i, const int &j) { return cloud->at(i).y < cloud->at(j).y; });
+
+    cable.insert(cable.end(), insideBox.begin(), insideBox.end());
+}
 } // railroad

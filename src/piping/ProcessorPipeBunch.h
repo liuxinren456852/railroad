@@ -13,6 +13,7 @@
 #include <string>
 
 #include "ProcessorPipe.h"
+#include "../helpers/LASClass.h"
 
 namespace railroad
 {
@@ -20,15 +21,21 @@ namespace railroad
 class ProcessorPipeBunch
 {
 public:
-    ProcessorPipeBunch *add(const std::string &name, ProcessorPipe *pipe);
+    ProcessorPipeBunch *add(const std::string &name, LASClass classification, ProcessorPipe *pipe, const int cloudIndex = -1);
+
+    ProcessorPipeBunch *add(const std::string &name, LASClass classification, std::vector<ProcessorPipe*> pipeVector, const int cloudIndex = -1) ;
 
     class Element
     {
     public:
         std::string name;
-        ProcessorPipe *pipe;
-
-        Element(const std::string &name, ProcessorPipe *pipe) : name(name), pipe(pipe) {};
+        LASClass classification;
+        std::vector<ProcessorPipe*> pipeVector;
+        int cloudIndex;
+        Element(const std::string &name, LASClass classification, ProcessorPipe *pipe, const int cloudIndex)
+            : name(name), classification(classification), pipeVector( std::vector<ProcessorPipe*> () = {pipe}), cloudIndex(cloudIndex)  {};
+        Element(const std::string &name, LASClass classification, std::vector<ProcessorPipe*> pipeVector, const int cloudIndex)
+            : name(name), classification(classification), pipeVector(pipeVector), cloudIndex(cloudIndex) {};
     };
 
     std::vector<Element> getPipes() const;

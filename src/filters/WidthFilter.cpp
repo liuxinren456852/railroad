@@ -13,17 +13,29 @@
 #include <pcl/common/transforms.h>
 
 #include "WidthFilter.h"
+#include "../helpers/LogHelper.h"
 
 namespace railroad
 {
 pcl::PointCloud<pcl::PointXYZ>::Ptr WidthFilter::process()
 {
     pcl::PointCloud<pcl::PointXYZ>::Ptr cloud(new pcl::PointCloud<pcl::PointXYZ>);
-
     Eigen::VectorXf coeff;
+    pcl::PointCloud<pcl::PointXYZ>::ConstPtr seedCloudToUse;
+
+    stopTimeMeasure();
+
+    if(_runOnSeed != SeedHelper::SeedType::NONE) {
+        seedCloudToUse = seedCloud(_runOnSeed);
+        LOG(debug) << "Using seed cloud specified in Pipes.h in filter";
+    } else {
+        LOG(error) << "Seed type not specified in Pipes.h for HeightFilter";
+    }
+
+    startTimeMeasure();
 
     pcl::SampleConsensusModelParallelLine<pcl::PointXYZ>::Ptr model_p(
-        new pcl::SampleConsensusModelParallelLine<pcl::PointXYZ>(_seedCloud));
+        new pcl::SampleConsensusModelParallelLine<pcl::PointXYZ>(seedCloudToUse));
     model_p->setAxis(Eigen::Vector3f::UnitY());
     model_p->setEpsAngle(1.0);
     std::vector<int> inliers;
@@ -45,7 +57,7 @@ pcl::PointCloud<pcl::PointXYZ>::Ptr WidthFilter::process()
     pcl::PointCloud<pcl::PointXYZ>::Ptr rotatedCloud(new pcl::PointCloud<pcl::PointXYZ>);
     pcl::PointCloud<pcl::PointXYZ>::Ptr rotatedSeed(new pcl::PointCloud<pcl::PointXYZ>);
     pcl::transformPointCloud(*_cloud, *rotatedCloud, transform);
-    pcl::transformPointCloud(*_seedCloud, *rotatedSeed, transform);
+    pcl::transformPointCloud(*seedCloudToUse, *rotatedSeed, transform);
 
     pcl::PointXYZ minPt, maxPt;
     pcl::getMinMax3D(*rotatedSeed, minPt, maxPt);

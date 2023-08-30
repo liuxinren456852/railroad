@@ -7,9 +7,8 @@
  * https://opensource.org/licenses/BSD-3-Clause
  */
 
-#include <iostream>
-
 #include <pcl/sample_consensus/ransac.h>
+#include <pcl/sample_consensus/sac_model_parallel_line.h>
 #include <pcl/filters/project_inliers.h>
 #include <pcl/visualization/pcl_visualizer.h>
 #include <pcl/console/parse.h>
@@ -39,9 +38,9 @@ pcl::PointCloud<pcl::PointXYZ>::Ptr RansacFilter::process()
     int size;
 
     do {
-        compute(cloud, temp, Eigen::Vector3f::UnitY(), .9, coeff);
+        compute(cloud, temp, Eigen::Vector3f::UnitY(), _threshold, coeff);
         size = temp->size();
-        LOG(trace) << "Size: " << temp->size();
+        LOG(debug) << "Size: " << temp->size();
         result->insert(result->end(), temp->begin(), temp->end());
     } while (size > _ransacMinSize);
 
@@ -51,7 +50,7 @@ pcl::PointCloud<pcl::PointXYZ>::Ptr RansacFilter::process()
 void RansacFilter::compute(pcl::PointCloud<pcl::PointXYZ>::Ptr &cloud, pcl::PointCloud<pcl::PointXYZ>::Ptr &temp,
                            const Eigen::Vector3f &axis, double threshold, Eigen::VectorXf &coeff)
 {
-    const double eps = 1.0;
+    const double eps = 20.0;
 
     pcl::SampleConsensusModelParallelLine<pcl::PointXYZ>::Ptr model_p(
         new pcl::SampleConsensusModelParallelLine<pcl::PointXYZ>(cloud));
@@ -61,7 +60,8 @@ void RansacFilter::compute(pcl::PointCloud<pcl::PointXYZ>::Ptr &cloud, pcl::Poin
 
     pcl::RandomSampleConsensus<pcl::PointXYZ> ransac(model_p);
     ransac.setDistanceThreshold(threshold);
-    ransac.computeModel();
+    ransac.setMaxIterations(30000);
+    ransac.computeModel(1);
     ransac.getInliers(inliers);
     ransac.getModelCoefficients(coeff);
 

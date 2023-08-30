@@ -18,12 +18,16 @@ namespace railroad
 class WidthFilter : public CloudProcessor
 {
 public:
-    WidthFilter(const std::string &name = "WidthFilter", float maxDistance = 1.2)
-        : CloudProcessor(name, true), _maxDistance(maxDistance) {}
+    WidthFilter(float maxDistance = 1.2, const std::string &name = "WidthFilter")
+        : CloudProcessor(name), _maxDistance(maxDistance) {}
+
+    WidthFilter(SeedHelper::SeedType _runOnSeed, float maxDistance = 1.2, const std::string &name = "WidthFilter")
+        : CloudProcessor(name), _maxDistance(maxDistance), _runOnSeed(_runOnSeed) {}
 
 protected:
     PointCloudPtr process() override;
     float _maxDistance;
+    SeedHelper::SeedType _runOnSeed = SeedHelper::SeedType::NONE;
 };
 } // railroad
 
